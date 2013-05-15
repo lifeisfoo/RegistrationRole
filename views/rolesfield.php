@@ -10,6 +10,6 @@ foreach ($Sender->RegistrationFields as $Field) {
 	echo '</li>';
 }*/
 echo "<li>";
-echo $this->Form->Label(T('Role'), 'Plugin.RegistrationRole.GroupID');
-echo $this->Form->DropDown('Plugin.RegistrationRole.GroupID', $this->RegistrationRoles, array('IncludeNull' => FALSE));
+echo $this->Form->Label(T('Role'), 'Plugin.RegistrationRole.RoleID');
+echo $this->Form->DropDown('Plugin.RegistrationRole.RoleID', $this->RegistrationRoles, array('IncludeNull' => FALSE));
 echo "</li>";

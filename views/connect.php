@@ -74,7 +74,7 @@ $ConnectSource = $this->Form->GetFormValue('ProviderName');
 					} else {
 						echo $this->Form->Label('Username', 'ConnectName');
 						echo '<div class="FinePrint">',T('ConnectChooseName', 'Choose a name to identify yourself on the site.'),'</div>';
-	
+      			
 						if (count($ExistingUsers) > 0) {
 							foreach ($ExistingUsers as $Row) {
 								echo Wrap($this->Form->Radio('UserSelect', $Row['Name'], array('value' => $Row['UserID'])), 'div');
@@ -87,6 +87,11 @@ $ConnectSource = $this->Form->GetFormValue('ProviderName');
 						echo $this->Form->Textbox('ConnectName');
 					?>
 				</li>
+				<?php
+					if (!$NoConnectName) {
+         				include('rolesfield.php');
+					}
+				?>
 				<li id="ConnectPassword">
 					<?php
 					echo $this->Form->Label('Password', 'ConnectPassword');
@@ -94,9 +99,6 @@ $ConnectSource = $this->Form->GetFormValue('ProviderName');
 					echo $this->Form->Input('ConnectPassword', 'password');
 					?>
 				</li>
-				<?php 
-         			include('rolesfield.php');
-      			?>
 			</ul>
 	
 		<?php

@@ -16,14 +16,19 @@ $PluginInfo['RegistrationRole'] = array(
 );
 
 class RegistrationRolePlugin extends Gdn_Plugin {
-   
+ 
+  /**
+   * Display a link in the dashboard side panel
+   */  
   public function Base_GetAppSettingsMenuItems_Handler($Sender) {    
     $LinkText = T('Registration Role');
     $Menu = $Sender->EventArguments['SideMenu'];
-    //$Menu->AddItem('Users', T('Users'));
     $Menu->AddLink('Users', $LinkText, 'settings/registrationrole', 'Garden.Settings.Manage');
   }
 
+  /**
+   * Generate data to be displayed in the plugin's settings page
+   */
   public function SettingsController_RegistrationRole_Create($Sender) {
     $Sender->Permission('Garden.Plugins.Manage');
     $Sender->AddSideMenu();
@@ -55,28 +60,39 @@ class RegistrationRolePlugin extends Gdn_Plugin {
     $Sender->Render();
   }
   
+  /**
+   * Replace all whitespaces in the string with underscores( vanilla conf keys doesn't support whitespaces)
+   */
   private static function normalizeName($CatName){
     return str_replace(" ", "_", $CatName);
   }
 
-  public function EntryController_Render_Before($Sender) {
-    echo "EntryController_Render_Before";
-    echo "<pre>";
-    echo $Sender->View;
-    //var_dump($Sender);
-    var_dump(C('Plugins.RegistrationRole'));
-    echo "</pre>";
-    //$RoleNames = explode(',', C('Plugins.EasyMembersList.HideTheseUsers', ''));
-    //$TrimmedNames = $this->trimNames($Names);
+  /**
+   * Replace underscores with whitespaces
+   */
+  private static function denormalizeName($CatName){
+    return str_replace("_", " ", $CatName);
+  }
 
+  /**
+   * Replaces registration pages with custom pages (with role selector)
+   */
+  public function EntryController_Render_Before($Sender) {
+    $RoleNames = array();
+    foreach (C('Plugins.RegistrationRole') as $Key => $Value) {
+      if( strcmp(C('Plugins.RegistrationRole.' . $Key, '0'), '1') == 0 ){
+        array_push($RoleNames, self::denormalizeName($Key));
+      }
+    }
     $Sender->RegistrationRoles = array('test' => 1, 'role2' => 2, 'role3' => 3);;
-    $Groups = Gdn::SQL()->Select('r.RoleID', '', 'value')
+    $Roles= Gdn::SQL()->Select('r.RoleID', '', 'value')
                            ->Select('r.Name', '', 'text')
                            ->From('Role r')
-                           //->WhereIn('Name',$TrimmedNames)
+                           ->WhereIn('r.Name', $RoleNames)
                            ->Get();
-    $Sender->RegistrationRoles = $Groups;
-    if (strtolower($Sender->RequestMethod) == 'register'){//only on registration page
+    $Sender->RegistrationRoles = $Roles;
+    if (strtolower($Sender->RequestMethod) == 'register' 
+        || strtolower($Sender->RequestMethod) == 'connect'){//only on registration/connect page
       $RegistrationMethod = $Sender->View;
       switch ($RegistrationMethod) {
         case 'RegisterCaptcha':
@@ -92,10 +108,35 @@ class RegistrationRolePlugin extends Gdn_Plugin {
           $Sender->View=$this->GetView('connect.php');
           break;
         default:
-          # continue to vanilla default view
+          var_dump("default");
           break;
       }
     }
+  }
+
+  /**
+   * Save selected role
+   */
+  public function UserModel_AfterInsertUser_Handler($Sender) {
+    if (!(Gdn::Controller() instanceof Gdn_Controller)) return;
+      
+    //Get user-submitted
+    $FormPostValues = Gdn::Controller()->Form->FormValues();
+    $UserID = GetValue('InsertUserID', $Sender->EventArguments);
+    $RoleID = GetValue('Plugin.RegistrationRole.RoleID', $FormPostValues);
+
+    //keep current roles
+    $CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
+    $RolesToSave = "";
+    foreach ($CurrentRoles as $ARole) {
+      $RolesToSave .= GetValue('Name', $ARole) . ',';
+    }
+    //Add selected role
+    $RoleModel = new RoleModel();
+    $RolesToSave .= GetValue('Name', $RoleModel->GetByRoleID($RoleID));
+
+    //SaveRoles expect a string like "Moderator, Member, ..." see class.usermodel.php
+    Gdn::UserModel()->SaveRoles($UserID, $RolesToSave);
   }
 
   public function Structure() {}

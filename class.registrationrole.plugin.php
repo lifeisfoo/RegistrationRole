@@ -75,22 +75,48 @@ class RegistrationRolePlugin extends Gdn_Plugin {
   }
 
   /**
-   * Replaces registration pages with custom pages (with role selector)
+   * Return selected registration roles
    */
-  public function EntryController_Render_Before($Sender) {
+  private static function registrationRolesNames() {
     $RoleNames = array();
     foreach (C('Plugins.RegistrationRole') as $Key => $Value) {
       if( strcmp(C('Plugins.RegistrationRole.' . $Key, '0'), '1') == 0 ){
         array_push($RoleNames, self::denormalizeName($Key));
       }
     }
-    $Sender->RegistrationRoles = array('test' => 1, 'role2' => 2, 'role3' => 3);;
+    return $RoleNames;
+  }
+
+  /**
+   * Return available registration roles (dropdown compatible)
+   */
+  private static function availableRolesDropdown() {
+    $RoleNames = self::registrationRolesNames();
     $Roles= Gdn::SQL()->Select('r.RoleID', '', 'value')
-                           ->Select('r.Name', '', 'text')
-                           ->From('Role r')
-                           ->WhereIn('r.Name', $RoleNames)
-                           ->Get();
-    $Sender->RegistrationRoles = $Roles;
+              ->Select('r.Name', '', 'text')
+              ->From('Role r')
+              ->WhereIn('r.Name', $RoleNames)
+              ->Get();
+    return $Roles;
+  }
+
+  /**
+   * Return available roles for internal plugin use
+   */
+  private static function availableRoles() {
+    $RoleNames = self::registrationRolesNames();
+    $RolesDataArray = Gdn::SQL()->Select('r.RoleID, r.Name')
+                        ->From('Role r')
+                        ->WhereIn('r.Name', $RoleNames)
+                        ->Get()->Result(DATASET_TYPE_ARRAY);
+    return new Gdn_DataSet($RolesDataArray);
+  }
+
+  /**
+   * Replaces registration pages with custom pages (with role selector)
+   */
+  public function EntryController_Render_Before($Sender) {
+    $Sender->RegistrationRoles = self::availableRolesDropdown();
     if (strtolower($Sender->RequestMethod) == 'register' 
         || strtolower($Sender->RequestMethod) == 'connect'){//only on registration/connect page
       $RegistrationMethod = $Sender->View;
@@ -137,6 +163,27 @@ class RegistrationRolePlugin extends Gdn_Plugin {
 
     //SaveRoles expect a string like "Moderator, Member, ..." see class.usermodel.php
     Gdn::UserModel()->SaveRoles($UserID, $RolesToSave);
+  }
+
+  /**
+   * Add selected role after at email confirmation
+   */
+  public function UserModel_BeforeConfirmEmail_Handler($Sender) {
+    $UserID = $Sender->EventArguments['ConfirmUserID'];
+    $CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
+    $CurrentRolesIds = array();
+    foreach ($CurrentRoles as $Role) {
+      array_push($CurrentRolesIds, $Role['RoleID']);
+    }
+
+    $AvailableRolesIds = array();
+    foreach (self::availableRoles() as $Role) {
+      array_push($AvailableRolesIds, $Role['RoleID']);
+    }
+    //Search for user roles contained in the availableRoles
+    //then push all roles to the ConfirmUserRoles array (passed by reference)
+    $Roles = array_intersect($CurrentRolesIds, $AvailableRolesIds);
+    $Sender->EventArguments['ConfirmUserRoles'] = array_merge($Sender->EventArguments['ConfirmUserRoles'], $Roles);
   }
 
   public function Structure() {}

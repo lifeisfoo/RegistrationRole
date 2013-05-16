@@ -170,9 +170,9 @@ class RegistrationRolePlugin extends Gdn_Plugin {
    */
   public function UserModel_BeforeConfirmEmail_Handler($Sender) {
     $UserID = $Sender->EventArguments['ConfirmUserID'];
-    $CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
+
     $CurrentRolesIds = array();
-    foreach ($CurrentRoles as $Role) {
+    foreach (Gdn::UserModel()->GetRoles($UserID) as $Role) {
       array_push($CurrentRolesIds, $Role['RoleID']);
     }
 

@@ -35,7 +35,14 @@ class RegistrationRolePlugin extends Gdn_Plugin {
     $Sender->Title('Select roles that can be selected by users at registration');
     $ConfigurationModule = new ConfigurationModule($Sender);
     $ConfigurationModule->RenderAll = True;
-    $DynamicSchema = array();
+    $DynamicSchema = array();//Plugin.RegistrationRole.RemoveMemberRole
+    $DynamicSchema = array_merge($DynamicSchema, array(
+          'Plugins.RegistrationRole.RemoveMemberRole' => array(
+            'LabelCode' => 'Remove "Member" role from new users roles', 
+            'Control' => 'CheckBox', 
+            'Default' => C('Plugins.RegistrationRole.RemoveMemberRole', '')
+          )
+        ));
     $RoleModel = new RoleModel();
     foreach($RoleModel->Get() as $Role){
       $RoleName = $Role->Name;
@@ -151,12 +158,22 @@ class RegistrationRolePlugin extends Gdn_Plugin {
     $UserID = GetValue('InsertUserID', $Sender->EventArguments);
     $RoleID = GetValue('Plugin.RegistrationRole.RoleID', $FormPostValues);
 
-    //keep current roles
     $CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
     $RolesToSave = "";
     foreach ($CurrentRoles as $ARole) {
-      $RolesToSave .= GetValue('Name', $ARole) . ',';
+      $RoleName = GetValue('Name', $ARole);
+      //remove member role from default roles (if present and if setting's selected)
+      if( strcmp(trim($RoleName),'Member') != 0){
+        $RolesToSave .= $RoleName. ',';
+      }else{//if is member role and if needs to be removed
+        if( strcmp(C('Plugins.RegistrationRole.RemoveMemberRole', '0'), '1') == 0 ){
+          
+        }else{
+          $RolesToSave .= $RoleName. ',';
+        }
+      }
     }
+    
     //Add selected role
     $RoleModel = new RoleModel();
     $RolesToSave .= GetValue('Name', $RoleModel->GetByRoleID($RoleID));
@@ -183,6 +200,26 @@ class RegistrationRolePlugin extends Gdn_Plugin {
     //Search for user roles contained in the availableRoles
     //then push all roles to the ConfirmUserRoles array (passed by reference)
     $Roles = array_intersect($CurrentRolesIds, $AvailableRolesIds);
+
+    //if member role needs to be removed
+    if( strcmp(C('Plugins.RegistrationRole.RemoveMemberRole', '0'), '1') ==  0 ){
+      $RoleToRemoveID = null;
+      $RoleModel = new RoleModel();
+      foreach ($Sender->EventArguments['ConfirmUserRoles'] as $RoleID) {
+        $Role = $RoleModel->GetByRoleID($RoleID);
+        if( strcmp(GetValue('Name', $Role), 'Member') == 0){
+          $RoleToRemoveID = GetValue('RoleID', $Role);
+        }
+      }
+      if($RoleToRemoveID){
+        for ($i=0; $i < sizeof($Sender->EventArguments['ConfirmUserRoles']); $i++) { 
+          if($Sender->EventArguments['ConfirmUserRoles'][$i] == $RoleToRemoveID){
+            unset($Sender->EventArguments['ConfirmUserRoles'][$i]);
+          }
+        }
+      }
+    }
+
     $Sender->EventArguments['ConfirmUserRoles'] = array_merge($Sender->EventArguments['ConfirmUserRoles'], $Roles);
   }
 

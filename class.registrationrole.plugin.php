@@ -4,7 +4,7 @@
 $PluginInfo['RegistrationRole'] = array(
    'Name' => 'Registration Role',
    'Description' => 'This plugin allows users to select a role during registration.',
-   'Version' => '0.1',
+   'Version' => '0.2',
    'RequiredApplications' => array('Vanilla' => '2.0.18'),
    'RequiredTheme' => FALSE, 
    'SettingsUrl' => 'settings/registrationrole',
@@ -141,7 +141,6 @@ class RegistrationRolePlugin extends Gdn_Plugin {
           $Sender->View=$this->GetView('connect.php');
           break;
         default:
-          var_dump("default");
           break;
       }
     }
@@ -152,34 +151,32 @@ class RegistrationRolePlugin extends Gdn_Plugin {
    */
   public function UserModel_AfterInsertUser_Handler($Sender) {
     if (!(Gdn::Controller() instanceof Gdn_Controller)) return;
-      
-    //Get user-submitted
+
     $FormPostValues = Gdn::Controller()->Form->FormValues();
-    $UserID = GetValue('InsertUserID', $Sender->EventArguments);
-    $RoleID = GetValue('Plugin.RegistrationRole.RoleID', $FormPostValues);
+	$RoleID = GetValue('Plugin.RegistrationRole.RoleID', $FormPostValues);
+	$UserID = GetValue('InsertUserID', $Sender->EventArguments);
 
-    $CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
-    $RolesToSave = "";
-    foreach ($CurrentRoles as $ARole) {
-      $RoleName = GetValue('Name', $ARole);
-      //remove member role from default roles (if present and if setting's selected)
-      if( strcmp(trim($RoleName),'Member') != 0){
-        $RolesToSave .= $RoleName. ',';
-      }else{//if is member role and if needs to be removed
-        if( strcmp(C('Plugins.RegistrationRole.RemoveMemberRole', '0'), '1') == 0 ){
-          
-        }else{
-          $RolesToSave .= $RoleName. ',';
-        }
-      }
+	//Save te selected registration role in the custom table
+	Gdn::SQL()->Insert('RegistrationRole', 
+        array('UserID' => $UserID, 
+              'RoleID' => $RoleID
+            )
+		);
+
+    if( (bool)C('Plugins.RegistrationRole.RemoveMemberRole', '0') ){
+    	//remove member role if present
+		$CurrentRoles = Gdn::UserModel()->GetRoles($UserID);
+		$RolesToSaveArray = array();
+		foreach ($CurrentRoles as $ARole) {
+			$RoleName = GetValue('Name', $ARole);
+			//remove member role from default roles (if present and if setting's selected)
+			if( strcmp(trim($RoleName),'Member') != 0){
+				array_push($RolesToSaveArray, $RoleName);
+			}
+		}
+		//SaveRoles expect a string like "Moderator, Member, ..." see class.usermodel.php
+    	Gdn::UserModel()->SaveRoles($UserID, implode(",", $RolesToSaveArray));
     }
-    
-    //Add selected role
-    $RoleModel = new RoleModel();
-    $RolesToSave .= GetValue('Name', $RoleModel->GetByRoleID($RoleID));
-
-    //SaveRoles expect a string like "Moderator, Member, ..." see class.usermodel.php
-    Gdn::UserModel()->SaveRoles($UserID, $RolesToSave);
   }
 
   /**
@@ -188,9 +185,15 @@ class RegistrationRolePlugin extends Gdn_Plugin {
   public function UserModel_BeforeConfirmEmail_Handler($Sender) {
     $UserID = $Sender->EventArguments['ConfirmUserID'];
 
-    $CurrentRolesIds = array();
-    foreach (Gdn::UserModel()->GetRoles($UserID) as $Role) {
-      array_push($CurrentRolesIds, $Role['RoleID']);
+	$RegRoles = Gdn::SQL()->Select('*')
+			->From('RegistrationRole rr')
+			->Where('rr.UserID', Gdn::Session()->UserID)
+			->Get()
+			->Result();
+
+    $SelectedRoles = array();//normally is only one, future-aware
+    foreach ($RegRoles as $Role) {
+      array_push($SelectedRoles, $Role->RoleID);
     }
 
     $AvailableRolesIds = array();
@@ -199,8 +202,8 @@ class RegistrationRolePlugin extends Gdn_Plugin {
     }
     //Search for user roles contained in the availableRoles
     //then push all roles to the ConfirmUserRoles array (passed by reference)
-    $Roles = array_intersect($CurrentRolesIds, $AvailableRolesIds);
-
+    //security check->get only available roles
+    $Roles = array_intersect($SelectedRoles, $AvailableRolesIds);
     //if member role needs to be removed
     if( strcmp(C('Plugins.RegistrationRole.RemoveMemberRole', '0'), '1') ==  0 ){
       $RoleToRemoveID = null;
@@ -219,13 +222,17 @@ class RegistrationRolePlugin extends Gdn_Plugin {
         }
       }
     }
-
     $Sender->EventArguments['ConfirmUserRoles'] = array_merge($Sender->EventArguments['ConfirmUserRoles'], $Roles);
+
   }
 
-  public function Structure() {}
-
-  public function Setup() {}
+  public function Setup() {
+  	Gdn::Structure()
+      ->Table('RegistrationRole')
+      ->Column('UserID', 'int(11)', FALSE, 'primary')
+      ->Column('RoleID', 'int(11)', FALSE, 'primary')
+      ->Set(FALSE, FALSE);
+  }
    
   public function OnDisable() {}
 
